@@ -243,8 +243,8 @@ function StockDetail({ token, symbol, setNotice }: { token: string; symbol: stri
 
   async function trade(type: 'buy' | 'sell') {
     try {
-      await api[type](token, { symbol, quantity });
-      setNotice({ type: 'success', text: `${type === 'buy' ? 'Bought' : 'Sold'} ${number(quantity)} shares of ${symbol}.` });
+      const response = await api[type](token, { symbol, quantity });
+      setNotice({ type: 'success', text: response.message });
     } catch (err) {
       setNotice({ type: 'error', text: err instanceof ApiError ? err.message : 'Trade failed.' });
     }

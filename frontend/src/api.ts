@@ -7,6 +7,7 @@ export type Holding = { symbol: string; quantity: number; averagePrice: number; 
 export type Summary = { cashBalance: number; holdingsValue: number; totalPortfolioValue: number; totalGainLoss: number; totalGainLossPercent: number; topHoldings: Holding[] };
 export type Transaction = { id: number; type: 'BUY' | 'SELL'; symbol: string; quantity: number; price: number; totalAmount: number; createdAt: string };
 export type WatchlistItem = { symbol: string; price: number; change: number; percentChange: number };
+export type TradeResponse = { type: 'BUY' | 'SELL'; symbol: string; quantity: number; executionPrice: number; totalAmount: number; cashBalance: number; message: string };
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
 
@@ -43,6 +44,6 @@ export const api = {
   watchlist: (token: string) => request<WatchlistItem[]>('/api/watchlist', token),
   addWatchlist: (token: string, symbol: string) => request<WatchlistItem>(`/api/watchlist/${encodeURIComponent(symbol)}`, token, { method: 'POST' }),
   removeWatchlist: (token: string, symbol: string) => request<void>(`/api/watchlist/${encodeURIComponent(symbol)}`, token, { method: 'DELETE' }),
-  buy: (token: string, body: { symbol: string; quantity: number }) => request('/api/trade/buy', token, { method: 'POST', body: JSON.stringify(body) }),
-  sell: (token: string, body: { symbol: string; quantity: number }) => request('/api/trade/sell', token, { method: 'POST', body: JSON.stringify(body) })
+  buy: (token: string, body: { symbol: string; quantity: number }) => request<TradeResponse>('/api/trade/buy', token, { method: 'POST', body: JSON.stringify(body) }),
+  sell: (token: string, body: { symbol: string; quantity: number }) => request<TradeResponse>('/api/trade/sell', token, { method: 'POST', body: JSON.stringify(body) })
 };
