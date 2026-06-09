@@ -1,4 +1,4 @@
-import { Activity, ArrowDownRight, ArrowUpRight, BarChart3, Briefcase, Clock3, Eye, LogOut, Search, ShieldCheck, Sparkles, Star, WalletCards } from 'lucide-react';
+import { Activity, ArrowDownRight, ArrowUpRight, BarChart3, Briefcase, Clock3, Eye, LogOut, RefreshCw, Search, ShieldCheck, Sparkles, Star, WalletCards } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -10,6 +10,10 @@ type Notice = { type: 'success' | 'error'; text: string } | null;
 const money = (value = 0) => value.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
 const number = (value = 0) => Number(value).toLocaleString(undefined, { maximumFractionDigits: 4 });
 const pct = (value = 0) => `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
+const STOCK_DETAIL_REFRESH_MS = 15_000;
+const WATCHLIST_REFRESH_MS = 30_000;
+const DASHBOARD_REFRESH_MS = 60_000;
+const PORTFOLIO_REFRESH_MS = 60_000;
 
 export default function App() {
   const [token, setToken] = useState(() => localStorage.getItem('mockmarket_token'));
@@ -81,7 +85,7 @@ export default function App() {
         <section className="p-4 lg:p-8">
           {view === 'dashboard' && <Dashboard token={token} setView={setView} />}
           {view === 'search' && <MarketSearch token={token} setNotice={setNotice} />}
-          {view === 'portfolio' && <Portfolio token={token} />}
+          {view === 'portfolio' && <Portfolio token={token} setNotice={setNotice} />}
           {view === 'watchlist' && <Watchlist token={token} setNotice={setNotice} />}
           {view === 'history' && <History token={token} />}
         </section>
@@ -151,7 +155,7 @@ function AuthShell({ onAuth }: { onAuth: (token: string, user: UserProfile) => v
 }
 
 function Dashboard({ token, setView }: { token: string; setView: (view: View) => void }) {
-  const { summary, account, history, watchlist } = useDashboardData(token);
+  const { summary, account, history, watchlist, lastUpdated, refresh } = useDashboardData(token);
   const chart = useMemo(() => [
     { name: 'Start', value: 100000 },
     { name: 'Cash', value: summary?.cashBalance ?? 100000 },
@@ -167,7 +171,7 @@ function Dashboard({ token, setView }: { token: string; setView: (view: View) =>
         <Metric label="Total Gain/Loss" value={`${money(summary?.totalGainLoss)} (${pct(summary?.totalGainLossPercent)})`} icon={(summary?.totalGainLoss ?? 0) >= 0 ? <ArrowUpRight /> : <ArrowDownRight />} tone={(summary?.totalGainLoss ?? 0) >= 0 ? 'gain' : 'loss'} />
       </div>
       <div className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
-        <Panel title="Portfolio Curve" action={<button onClick={() => setView('portfolio')} className="text-sm text-mint">View portfolio</button>}>
+        <Panel title="Portfolio Curve" action={<div className="flex items-center gap-3"><LastUpdated at={lastUpdated} /><button onClick={refresh} className="rounded-lg border border-line p-2 text-slate-300 hover:text-mint" title="Refresh dashboard"><RefreshCw size={16} /></button><button onClick={() => setView('portfolio')} className="text-sm text-mint">View portfolio</button></div>}>
           <div className="h-72">
             <ResponsiveContainer>
               <AreaChart data={chart}>
@@ -202,6 +206,10 @@ function MarketSearch({ token, setNotice }: { token: string; setNotice: (notice:
   const [query, setQuery] = useState('apple');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [selected, setSelected] = useState('AAPL');
+  const [holdings, setHoldings] = useState<Holding[]>([]);
+
+  const refreshHoldings = () => api.holdings(token).then(setHoldings);
+  const selectedHolding = holdings.find(holding => holding.symbol === selected);
 
   async function search(event?: FormEvent) {
     event?.preventDefault();
@@ -210,7 +218,7 @@ function MarketSearch({ token, setNotice }: { token: string; setNotice: (notice:
     if (data[0]) setSelected(data[0].symbol);
   }
 
-  useEffect(() => { search(); }, []);
+  useEffect(() => { search(); refreshHoldings(); }, []);
 
   return (
     <div className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
@@ -228,23 +236,38 @@ function MarketSearch({ token, setNotice }: { token: string; setNotice: (notice:
           ))}
         </div>
       </Panel>
-      <StockDetail token={token} symbol={selected} setNotice={setNotice} />
+      <StockDetail token={token} symbol={selected} ownedHolding={selectedHolding} setNotice={setNotice} onTradeComplete={refreshHoldings} />
     </div>
   );
 }
 
-function StockDetail({ token, symbol, setNotice }: { token: string; symbol: string; setNotice: (notice: Notice) => void }) {
+function StockDetail({ token, symbol, ownedHolding, setNotice, onTradeComplete }: { token: string; symbol: string; ownedHolding?: Holding; setNotice: (notice: Notice) => void; onTradeComplete: () => void }) {
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quantity, setQuantity] = useState(1);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const ownedQuantity = ownedHolding?.quantity ?? 0;
+  const canSell = ownedQuantity > 0 && quantity > 0 && quantity <= ownedQuantity;
+
+  const refreshQuote = () => {
+    if (!symbol) return;
+    api.quote(symbol).then(data => {
+      setQuote(data);
+      setLastUpdated(new Date());
+    });
+  };
 
   useEffect(() => {
-    if (symbol) api.quote(symbol).then(setQuote);
+    refreshQuote();
+    const interval = window.setInterval(refreshQuote, STOCK_DETAIL_REFRESH_MS);
+    return () => window.clearInterval(interval);
   }, [symbol]);
 
   async function trade(type: 'buy' | 'sell') {
     try {
       const response = await api[type](token, { symbol, quantity });
       setNotice({ type: 'success', text: response.message });
+      onTradeComplete();
+      refreshQuote();
     } catch (err) {
       setNotice({ type: 'error', text: err instanceof ApiError ? err.message : 'Trade failed.' });
     }
@@ -259,7 +282,7 @@ function StockDetail({ token, symbol, setNotice }: { token: string; symbol: stri
   const up = quote.change >= 0;
 
   return (
-    <Panel title={`${quote.symbol} Detail`} action={<button onClick={addWatchlist} className="rounded-lg border border-line p-2 text-mint"><Star size={17} /></button>}>
+    <Panel title={`${quote.symbol} Detail`} action={<div className="flex items-center gap-3"><LastUpdated at={lastUpdated} /><button onClick={refreshQuote} className="rounded-lg border border-line p-2 text-slate-300 hover:text-mint" title="Refresh quote"><RefreshCw size={16} /></button><button onClick={addWatchlist} className="rounded-lg border border-line p-2 text-mint" title="Add to watchlist"><Star size={17} /></button></div>}>
       <div className="grid gap-5 lg:grid-cols-[1fr_260px]">
         <div>
           <div className="flex flex-wrap items-end justify-between gap-3">
@@ -279,9 +302,10 @@ function StockDetail({ token, symbol, setNotice }: { token: string; symbol: stri
           <label className="text-sm text-slate-300">Quantity<input className="input mt-1" type="number" min="0.0001" step="0.0001" value={quantity} onChange={e => setQuantity(Number(e.target.value))} /></label>
           <p className="mt-3 text-sm text-slate-400">Estimated value</p>
           <p className="text-2xl font-black">{money(quantity * quote.price)}</p>
-          <div className="mt-4 grid grid-cols-2 gap-2">
+          <p className="mt-3 text-xs text-slate-500">{ownedQuantity > 0 ? `You own ${number(ownedQuantity)} shares.` : 'You do not own this stock yet.'}</p>
+          <div className={`mt-4 grid gap-2 ${ownedQuantity > 0 ? 'grid-cols-2' : 'grid-cols-1'}`}>
             <button onClick={() => trade('buy')} className="rounded-lg bg-mint px-4 py-3 font-bold text-ink">Buy</button>
-            <button onClick={() => trade('sell')} className="rounded-lg bg-danger px-4 py-3 font-bold text-white">Sell</button>
+            {ownedQuantity > 0 && <button onClick={() => trade('sell')} disabled={!canSell} className="rounded-lg bg-danger px-4 py-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-45">Sell</button>}
           </div>
         </div>
       </div>
@@ -289,17 +313,50 @@ function StockDetail({ token, symbol, setNotice }: { token: string; symbol: stri
   );
 }
 
-function Portfolio({ token }: { token: string }) {
+function Portfolio({ token, setNotice }: { token: string; setNotice: (notice: Notice) => void }) {
   const [holdings, setHoldings] = useState<Holding[]>([]);
-  useEffect(() => { api.holdings(token).then(setHoldings); }, [token]);
-  return <Panel title="Holdings">{holdings.length ? <HoldingTable holdings={holdings} /> : <Empty text="Your holdings will appear after your first buy." />}</Panel>;
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const refresh = () => api.holdings(token).then(data => {
+    setHoldings(data);
+    setLastUpdated(new Date());
+  });
+
+  useEffect(() => {
+    refresh();
+    const interval = window.setInterval(refresh, PORTFOLIO_REFRESH_MS);
+    return () => window.clearInterval(interval);
+  }, [token]);
+
+  async function sell(symbol: string, quantity: number) {
+    try {
+      const response = await api.sell(token, { symbol, quantity });
+      setNotice({ type: 'success', text: response.message });
+      refresh();
+    } catch (err) {
+      setNotice({ type: 'error', text: err instanceof ApiError ? err.message : 'Sell order failed.' });
+    }
+  }
+
+  return (
+    <Panel title="Holdings" action={<div className="flex items-center gap-3"><LastUpdated at={lastUpdated} /><button onClick={refresh} className="rounded-lg border border-line p-2 text-slate-300 hover:text-mint" title="Refresh holdings"><RefreshCw size={16} /></button></div>}>
+      {holdings.length ? <HoldingTable holdings={holdings} onSell={sell} /> : <Empty text="Your holdings will appear after your first buy." />}
+    </Panel>
+  );
 }
 
 function Watchlist({ token, setNotice }: { token: string; setNotice: (notice: Notice) => void }) {
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [symbol, setSymbol] = useState('AAPL');
-  const refresh = () => api.watchlist(token).then(setItems);
-  useEffect(() => { refresh(); }, [token]);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const refresh = () => api.watchlist(token).then(data => {
+    setItems(data);
+    setLastUpdated(new Date());
+  });
+  useEffect(() => {
+    refresh();
+    const interval = window.setInterval(refresh, WATCHLIST_REFRESH_MS);
+    return () => window.clearInterval(interval);
+  }, [token]);
 
   async function add(event: FormEvent) {
     event.preventDefault();
@@ -314,7 +371,7 @@ function Watchlist({ token, setNotice }: { token: string; setNotice: (notice: No
   }
 
   return (
-    <Panel title="Watchlist">
+    <Panel title="Watchlist" action={<div className="flex items-center gap-3"><LastUpdated at={lastUpdated} /><button onClick={refresh} className="rounded-lg border border-line p-2 text-slate-300 hover:text-mint" title="Refresh watchlist"><RefreshCw size={16} /></button></div>}>
       <form onSubmit={add} className="mb-5 flex gap-2">
         <input className="input" value={symbol} onChange={e => setSymbol(e.target.value)} />
         <button className="rounded-lg bg-mint px-4 font-bold text-ink">Add</button>
@@ -337,11 +394,24 @@ function useDashboardData(token: string) {
   const [account, setAccount] = useState<Account | null>(null);
   const [history, setHistory] = useState<Transaction[]>([]);
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
-  useEffect(() => {
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const refresh = () => {
     Promise.all([api.summary(token), api.account(token), api.history(token), api.watchlist(token)])
-      .then(([s, a, h, w]) => { setSummary(s); setAccount(a); setHistory(h); setWatchlist(w); });
+      .then(([s, a, h, w]) => {
+        setSummary(s);
+        setAccount(a);
+        setHistory(h);
+        setWatchlist(w);
+        setLastUpdated(new Date());
+      });
+  };
+
+  useEffect(() => {
+    refresh();
+    const interval = window.setInterval(refresh, DASHBOARD_REFRESH_MS);
+    return () => window.clearInterval(interval);
   }, [token]);
-  return { summary, account, history, watchlist };
+  return { summary, account, history, watchlist, lastUpdated, refresh };
 }
 
 function NavButton({ icon, label, active, onClick }: { icon: ReactNode; label: string; active: boolean; onClick: () => void }) {
@@ -373,8 +443,48 @@ function HoldingList({ holdings }: { holdings: Holding[] }) {
   return <div className="space-y-3">{holdings.map(item => <div key={item.symbol} className="flex items-center justify-between rounded-lg bg-ink/55 p-3"><div><p className="font-bold">{item.symbol}</p><p className="text-sm text-slate-400">{number(item.quantity)} shares</p></div><div className="text-right"><p>{money(item.marketValue)}</p><p className={item.gainLoss >= 0 ? 'text-sm text-mint' : 'text-sm text-danger'}>{pct(item.gainLossPercent)}</p></div></div>)}</div>;
 }
 
-function HoldingTable({ holdings }: { holdings: Holding[] }) {
-  return <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="text-slate-400"><tr><th className="py-3">Symbol</th><th>Quantity</th><th>Avg Price</th><th>Current</th><th>Market Value</th><th>Gain/Loss</th></tr></thead><tbody>{holdings.map(h => <tr key={h.symbol} className="border-t border-line"><td className="py-4 font-bold">{h.symbol}</td><td>{number(h.quantity)}</td><td>{money(h.averagePrice)}</td><td>{money(h.currentPrice)}</td><td>{money(h.marketValue)}</td><td className={h.gainLoss >= 0 ? 'text-mint' : 'text-danger'}>{money(h.gainLoss)} ({pct(h.gainLossPercent)})</td></tr>)}</tbody></table></div>;
+function HoldingTable({ holdings, onSell }: { holdings: Holding[]; onSell: (symbol: string, quantity: number) => void }) {
+  const [sellQuantities, setSellQuantities] = useState<Record<string, number>>({});
+
+  function quantityFor(holding: Holding) {
+    return sellQuantities[holding.symbol] ?? holding.quantity;
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[940px] text-left text-sm">
+        <thead className="text-slate-400">
+          <tr><th className="py-3">Symbol</th><th>Quantity</th><th>Avg Price</th><th>Current</th><th>Market Value</th><th>Gain/Loss</th><th>Sell</th></tr>
+        </thead>
+        <tbody>
+          {holdings.map(h => {
+            const sellQuantity = quantityFor(h);
+            const validSell = sellQuantity > 0 && sellQuantity <= h.quantity;
+            return (
+              <tr key={h.symbol} className="border-t border-line">
+                <td className="py-4 font-bold">{h.symbol}</td>
+                <td>{number(h.quantity)}</td>
+                <td>{money(h.averagePrice)}</td>
+                <td>{money(h.currentPrice)}</td>
+                <td>{money(h.marketValue)}</td>
+                <td className={h.gainLoss >= 0 ? 'text-mint' : 'text-danger'}>{money(h.gainLoss)} ({pct(h.gainLossPercent)})</td>
+                <td>
+                  <div className="flex min-w-52 items-center gap-2">
+                    <input className="input max-w-28 py-2" type="number" min="0.0001" max={h.quantity} step="0.0001" value={sellQuantity} onChange={event => setSellQuantities(current => ({ ...current, [h.symbol]: Number(event.target.value) }))} />
+                    <button disabled={!validSell} onClick={() => onSell(h.symbol, sellQuantity)} className="rounded-lg bg-danger px-4 py-2 font-bold text-white disabled:cursor-not-allowed disabled:opacity-45">Sell</button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function LastUpdated({ at }: { at: Date | null }) {
+  return <span className="hidden text-xs text-slate-500 sm:inline">{at ? `Updated ${at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}` : 'Updating...'}</span>;
 }
 
 function TransactionRow({ tx, detailed = false }: { tx: Transaction; detailed?: boolean }) {

@@ -14,6 +14,7 @@ It gives each registered user a simulated `$100,000` cash account, lets them sea
 - Average cost tracking for holdings
 - Portfolio summary with cash, holdings value, total value, and gain/loss
 - Live quote-enriched watchlist
+- Sensible quote refresh intervals with manual refresh controls
 - Trade history with BUY/SELL records
 - PostgreSQL persistence with an H2 local demo profile
 - Swagger/OpenAPI documentation
@@ -149,6 +150,15 @@ Watchlist:
 - `GET /api/watchlist`
 - `POST /api/watchlist/{symbol}`
 - `DELETE /api/watchlist/{symbol}`
+
+## Market Data Refresh
+
+MockMarket avoids aggressive polling so it stays friendly to free API rate limits:
+
+- Stock detail refreshes every 15 seconds
+- Watchlist refreshes every 30 seconds
+- Dashboard and portfolio refresh every 60 seconds
+- Key screens also include manual refresh controls
 
 ## Deployment
 
