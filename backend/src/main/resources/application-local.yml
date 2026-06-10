@@ -10,4 +10,4 @@ spring:
 
 app:
   market:
-    demo-mode: true
+    demo-mode: ${MARKET_DEMO_MODE:false}

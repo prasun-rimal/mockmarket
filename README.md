@@ -97,6 +97,15 @@ cd backend
 mvn spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
+For local development with live Finnhub quotes:
+
+```bash
+cd backend
+FINNHUB_API_KEY=your_finnhub_key_here mvn spring-boot:run -Dspring-boot.run.profiles=local
+```
+
+If `FINNHUB_API_KEY` is missing, the backend falls back to demo quote data so the app can still run.
+
 Backend runs at:
 
 ```text
