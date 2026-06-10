@@ -4,6 +4,24 @@ MockMarket is a full-stack paper trading platform built with Java 21, Spring Boo
 
 It gives each registered user a simulated `$100,000` cash account, lets them search real stock quotes, buy and sell shares with fake money, track holdings, manage a watchlist, and review transaction history.
 
+## Screenshots
+
+### Dashboard
+
+![MockMarket dashboard with portfolio metrics, chart, recent trades, and watchlist](docs/screenshots/02-dashboard.png)
+
+### Portfolio
+
+![MockMarket portfolio holdings table with sell controls and auto-refresh status](docs/screenshots/03-portfolio.png)
+
+### Trade History
+
+![MockMarket trade history showing BUY transactions with quantities, prices, totals, and timestamps](docs/screenshots/04-trade-history.png)
+
+### Authentication
+
+![MockMarket registration screen with dark trading interface styling](docs/screenshots/01-auth.png)
+
 ## Features
 
 - Register/login with JWT authentication
