@@ -216,3 +216,9 @@ Database:
 - Stock news and company fundamentals
 - Email verification
 - End-to-end Playwright tests
+
+## Author
+
+**Prasun Rimal**
+B.S. Mathematics and B.S. Computer Science
+St. Joseph's University, New York
