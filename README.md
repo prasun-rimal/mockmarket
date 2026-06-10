@@ -4,6 +4,13 @@ MockMarket is a full-stack paper trading platform built with Java 21, Spring Boo
 
 It gives each registered user a simulated `$100,000` cash account, lets them search real stock quotes, buy and sell shares with fake money, track holdings, manage a watchlist, and review transaction history.
 
+## Live Demo
+
+- Frontend: [https://mockmarket-swart.vercel.app](https://mockmarket-swart.vercel.app)
+- Backend health check: [https://mockmarket-backend-c24i.onrender.com/actuator/health](https://mockmarket-backend-c24i.onrender.com/actuator/health)
+
+The backend runs on Render's free tier, so the first request after inactivity may take a moment while the service wakes up.
+
 ## Screenshots
 
 ### Dashboard
@@ -189,16 +196,14 @@ MockMarket avoids aggressive polling so it stays friendly to free API rate limit
 
 ## Deployment
 
-Frontend:
-- Deploy `frontend/` to Vercel
-- Set `VITE_API_URL` to the deployed backend URL
+Current production deployment:
+- Frontend: Vercel
+- Backend: Render free web service
+- Database: Neon PostgreSQL
 
-Backend:
-- Deploy `backend/` to Render, Railway, Fly.io, or AWS
-- Set `FINNHUB_API_KEY`, `JWT_SECRET`, `DATABASE_URL`, and `CORS_ALLOWED_ORIGINS`
-
-Database:
-- Use Neon, Supabase, Railway PostgreSQL, or Render PostgreSQL
+Production environment variables:
+- Frontend: `VITE_API_URL`
+- Backend: `FINNHUB_API_KEY`, `JWT_SECRET`, `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD`, and `CORS_ALLOWED_ORIGINS`
 
 ## Security Notes
 
