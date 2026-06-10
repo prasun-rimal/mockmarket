@@ -171,7 +171,7 @@ function Dashboard({ token, setView }: { token: string; setView: (view: View) =>
         <Metric label="Total Gain/Loss" value={`${money(summary?.totalGainLoss)} (${pct(summary?.totalGainLossPercent)})`} icon={(summary?.totalGainLoss ?? 0) >= 0 ? <ArrowUpRight /> : <ArrowDownRight />} tone={(summary?.totalGainLoss ?? 0) >= 0 ? 'gain' : 'loss'} />
       </div>
       <div className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
-        <Panel title="Portfolio Curve" action={<div className="flex items-center gap-3"><LastUpdated at={lastUpdated} /><button onClick={refresh} className="rounded-lg border border-line p-2 text-slate-300 hover:text-mint" title="Refresh dashboard"><RefreshCw size={16} /></button><button onClick={() => setView('portfolio')} className="text-sm text-mint">View portfolio</button></div>}>
+        <Panel title="Portfolio Curve" action={<div className="flex flex-wrap items-center justify-end gap-3"><RefreshControl at={lastUpdated} intervalMs={DASHBOARD_REFRESH_MS} onRefresh={refresh} label="Dashboard" /><button onClick={() => setView('portfolio')} className="text-sm text-mint">View portfolio</button></div>}>
           <div className="h-72">
             <ResponsiveContainer>
               <AreaChart data={chart}>
@@ -282,7 +282,7 @@ function StockDetail({ token, symbol, ownedHolding, setNotice, onTradeComplete }
   const up = quote.change >= 0;
 
   return (
-    <Panel title={`${quote.symbol} Detail`} action={<div className="flex items-center gap-3"><LastUpdated at={lastUpdated} /><button onClick={refreshQuote} className="rounded-lg border border-line p-2 text-slate-300 hover:text-mint" title="Refresh quote"><RefreshCw size={16} /></button><button onClick={addWatchlist} className="rounded-lg border border-line p-2 text-mint" title="Add to watchlist"><Star size={17} /></button></div>}>
+    <Panel title={`${quote.symbol} Detail`} action={<div className="flex flex-wrap items-center justify-end gap-3"><RefreshControl at={lastUpdated} intervalMs={STOCK_DETAIL_REFRESH_MS} onRefresh={refreshQuote} label="Quote" /><button onClick={addWatchlist} className="rounded-lg border border-line p-2 text-mint" title="Add to watchlist"><Star size={17} /></button></div>}>
       <div className="grid gap-5 lg:grid-cols-[1fr_260px]">
         <div>
           <div className="flex flex-wrap items-end justify-between gap-3">
@@ -338,7 +338,7 @@ function Portfolio({ token, setNotice }: { token: string; setNotice: (notice: No
   }
 
   return (
-    <Panel title="Holdings" action={<div className="flex items-center gap-3"><LastUpdated at={lastUpdated} /><button onClick={refresh} className="rounded-lg border border-line p-2 text-slate-300 hover:text-mint" title="Refresh holdings"><RefreshCw size={16} /></button></div>}>
+    <Panel title="Holdings" action={<RefreshControl at={lastUpdated} intervalMs={PORTFOLIO_REFRESH_MS} onRefresh={refresh} label="Portfolio" />}>
       {holdings.length ? <HoldingTable holdings={holdings} onSell={sell} /> : <Empty text="Your holdings will appear after your first buy." />}
     </Panel>
   );
@@ -371,7 +371,7 @@ function Watchlist({ token, setNotice }: { token: string; setNotice: (notice: No
   }
 
   return (
-    <Panel title="Watchlist" action={<div className="flex items-center gap-3"><LastUpdated at={lastUpdated} /><button onClick={refresh} className="rounded-lg border border-line p-2 text-slate-300 hover:text-mint" title="Refresh watchlist"><RefreshCw size={16} /></button></div>}>
+    <Panel title="Watchlist" action={<RefreshControl at={lastUpdated} intervalMs={WATCHLIST_REFRESH_MS} onRefresh={refresh} label="Watchlist" />}>
       <form onSubmit={add} className="mb-5 flex gap-2">
         <input className="input" value={symbol} onChange={e => setSymbol(e.target.value)} />
         <button className="rounded-lg bg-mint px-4 font-bold text-ink">Add</button>
@@ -483,8 +483,36 @@ function HoldingTable({ holdings, onSell }: { holdings: Holding[]; onSell: (symb
   );
 }
 
-function LastUpdated({ at }: { at: Date | null }) {
-  return <span className="hidden text-xs text-slate-500 sm:inline">{at ? `Updated ${at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}` : 'Updating...'}</span>;
+function RefreshControl({ at, intervalMs, onRefresh, label }: { at: Date | null; intervalMs: number; onRefresh: () => void; label: string }) {
+  const secondsLeft = useRefreshCountdown(at, intervalMs);
+  const intervalSeconds = Math.round(intervalMs / 1000);
+
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-line bg-ink/70 px-2 py-1.5">
+      <div className="min-w-0">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-mint">Auto-refresh {intervalSeconds}s</p>
+        <p className="truncate text-xs text-slate-400">
+          {at ? `${label} updated ${at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })} · next in ${secondsLeft}s` : 'Updating now...'}
+        </p>
+      </div>
+      <button onClick={onRefresh} className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-line text-slate-300 hover:border-mint hover:text-mint" title={`Refresh ${label.toLowerCase()} now`}>
+        <RefreshCw size={15} />
+      </button>
+    </div>
+  );
+}
+
+function useRefreshCountdown(at: Date | null, intervalMs: number) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const tick = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(tick);
+  }, []);
+
+  if (!at) return Math.round(intervalMs / 1000);
+  const elapsed = now - at.getTime();
+  return Math.max(0, Math.ceil((intervalMs - elapsed) / 1000));
 }
 
 function TransactionRow({ tx, detailed = false }: { tx: Transaction; detailed?: boolean }) {
