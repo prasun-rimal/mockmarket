@@ -347,22 +347,57 @@ function Portfolio({ token, setNotice }: { token: string; setNotice: (notice: No
 function Watchlist({ token, setNotice }: { token: string; setNotice: (notice: Notice) => void }) {
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [symbol, setSymbol] = useState('AAPL');
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [selectedSymbol, setSelectedSymbol] = useState('AAPL');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const refresh = () => api.watchlist(token).then(data => {
     setItems(data);
     setLastUpdated(new Date());
   });
+
   useEffect(() => {
     refresh();
     const interval = window.setInterval(refresh, WATCHLIST_REFRESH_MS);
     return () => window.clearInterval(interval);
   }, [token]);
 
+  useEffect(() => {
+    const query = symbol.trim();
+    if (query.length < 2) {
+      setResults([]);
+      setSelectedSymbol('');
+      return;
+    }
+
+    setSelectedSymbol(query.toUpperCase());
+
+    const timeout = window.setTimeout(() => {
+      api.search(query)
+        .then(data => {
+          setResults(data);
+          setSelectedSymbol(data[0]?.symbol ?? query.toUpperCase());
+        })
+        .catch(() => {
+          setResults([]);
+          setSelectedSymbol(query.toUpperCase());
+        });
+    }, 250);
+
+    return () => window.clearTimeout(timeout);
+  }, [symbol]);
+
   async function add(event: FormEvent) {
     event.preventDefault();
-    await api.addWatchlist(token, symbol);
-    setNotice({ type: 'success', text: `${symbol.toUpperCase()} added to watchlist.` });
-    refresh();
+    const clean = selectedSymbol || symbol.trim().toUpperCase();
+    if (!clean) return;
+
+    try {
+      await api.addWatchlist(token, clean);
+      setNotice({ type: 'success', text: `${clean} added to watchlist.` });
+      refresh();
+    } catch (err) {
+      setNotice({ type: 'error', text: err instanceof ApiError ? err.message : 'Could not add that symbol.' });
+    }
   }
 
   async function remove(item: string) {
@@ -372,9 +407,26 @@ function Watchlist({ token, setNotice }: { token: string; setNotice: (notice: No
 
   return (
     <Panel title="Watchlist" action={<RefreshControl at={lastUpdated} intervalMs={WATCHLIST_REFRESH_MS} onRefresh={refresh} label="Watchlist" />}>
-      <form onSubmit={add} className="mb-5 flex gap-2">
-        <input className="input" value={symbol} onChange={e => setSymbol(e.target.value)} />
-        <button className="rounded-lg bg-mint px-4 font-bold text-ink">Add</button>
+      <form onSubmit={add} className="mb-5 grid gap-3 lg:grid-cols-[1fr_auto]">
+        <div>
+          <input className="input" value={symbol} onChange={e => setSymbol(e.target.value)} placeholder="Search Apple, Tesla, NVDA..." />
+          {results.length > 0 && (
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              {results.slice(0, 6).map(result => (
+                <button
+                  type="button"
+                  key={result.symbol}
+                  onClick={() => setSelectedSymbol(result.symbol)}
+                  className={`rounded-lg border px-4 py-3 text-left ${selectedSymbol === result.symbol ? 'border-mint bg-mint/10' : 'border-line bg-ink/50'}`}
+                >
+                  <p className="font-bold">{result.symbol}</p>
+                  <p className="text-sm text-slate-400">{result.description}</p>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <button className="h-12 rounded-lg bg-mint px-5 font-bold text-ink">Add {selectedSymbol || symbol.toUpperCase()}</button>
       </form>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {items.map(item => <div key={item.symbol} className="rounded-lg border border-line bg-ink/60 p-4"><QuoteRow item={item} /><button onClick={() => remove(item.symbol)} className="mt-3 text-sm text-danger">Remove</button></div>)}
