@@ -32,6 +32,10 @@ async function request<T>(path: string, token?: string | null, options: RequestI
 }
 
 export const api = {
+  wake: async () => {
+    const response = await fetch(`${API_URL}/api/health`, { cache: 'no-store' });
+    if (!response.ok) throw new ApiError('The server is still starting. Please try again in a few seconds.');
+  },
   register: (body: { name: string; email: string; password: string }) => request<AuthResponse>('/api/auth/register', null, { method: 'POST', body: JSON.stringify(body) }),
   login: (body: { email: string; password: string }) => request<AuthResponse>('/api/auth/login', null, { method: 'POST', body: JSON.stringify(body) }),
   me: (token: string) => request<UserProfile>('/api/auth/me', token),

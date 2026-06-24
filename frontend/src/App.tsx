@@ -101,18 +101,37 @@ function AuthShell({ onAuth }: { onAuth: (token: string, user: UserProfile) => v
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [serverStatus, setServerStatus] = useState<'waking' | 'ready' | 'retry'>('waking');
+  const [stage, setStage] = useState<'waking' | 'authenticating'>('waking');
+
+  useEffect(() => {
+    let active = true;
+    api.wake()
+      .then(() => { if (active) setServerStatus('ready'); })
+      .catch(() => { if (active) setServerStatus('retry'); });
+    return () => { active = false; };
+  }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError('');
     setLoading(true);
+    let backendReady = serverStatus === 'ready';
     try {
+      if (!backendReady) {
+        setStage('waking');
+        await api.wake();
+        backendReady = true;
+        setServerStatus('ready');
+      }
+      setStage('authenticating');
       const response = mode === 'register'
         ? await api.register({ name, email, password })
         : await api.login({ email, password });
       onAuth(response.token, response.user);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not authenticate.');
+      if (!backendReady) setServerStatus('retry');
+      setError(err instanceof ApiError ? err.message : 'The free server is still waking up. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -146,7 +165,7 @@ function AuthShell({ onAuth }: { onAuth: (token: string, user: UserProfile) => v
           <label className="mb-3 block text-sm text-slate-300">Email<input className="input mt-1" type="email" value={email} onChange={e => setEmail(e.target.value)} required /></label>
           <label className="mb-4 block text-sm text-slate-300">Password<input className="input mt-1" type="password" value={password} onChange={e => setPassword(e.target.value)} required /></label>
           {error && <p className="mb-4 rounded-lg bg-danger/15 px-3 py-2 text-sm text-danger">{error}</p>}
-          <button disabled={loading} className="w-full rounded-lg bg-mint px-4 py-3 font-bold text-ink hover:bg-emerald-300 disabled:opacity-60">{loading ? 'Working...' : mode === 'register' ? 'Create paper account' : 'Enter dashboard'}</button>
+          <button disabled={loading || serverStatus === 'waking'} className="w-full rounded-lg bg-mint px-4 py-3 font-bold text-ink hover:bg-emerald-300 disabled:opacity-60">{serverStatus === 'waking' || (loading && stage === 'waking') ? 'Waking secure server...' : loading ? mode === 'register' ? 'Creating account...' : 'Signing in...' : serverStatus === 'retry' ? 'Retry connection' : mode === 'register' ? 'Create paper account' : 'Enter dashboard'}</button>
           <p className="mt-4 text-center text-xs text-slate-500">Password needs 8+ chars, one uppercase letter, and one symbol.</p>
         </form>
       </section>
